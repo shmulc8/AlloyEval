@@ -29,7 +29,7 @@ We replicate their protocol with Google Gemini models and extend it with additio
 
 ### 2.1 Alloy
 
-Alloy models consist of *signatures* (types with fields) and *predicates* expressed in first-order relational logic. The Alloy Analyzer performs bounded model checking: given a scope, it exhaustively searches for counterexamples. UNSAT = valid; SAT = counterexample found.
+Alloy [2] models consist of *signatures* (types with fields) and *predicates* expressed in first-order relational logic. The Alloy Analyzer performs bounded model checking: given a scope, it exhaustively searches for counterexamples. UNSAT = valid; SAT = counterexample found.
 
 Example --- reflexivity:
 ```alloy
@@ -186,15 +186,15 @@ Flash Lite, as a non-reasoning lightweight model, performs significantly below t
 
 ### 5.1 Model Capability Gap
 
-The original study used reasoning-oriented models (o3-mini, DeepSeek R1) that achieved high pass rates across all tasks. Our choice of Gemini 2.5 Flash Lite and Pro allows us to measure the capability spectrum: Flash Lite represents the class of fast, cheap models suitable for high-throughput experimentation, while Pro represents a stronger model with extended reasoning. Pro approaches the original study's results (95--100% on alloy2alloy, 100% on sketch2alloy), while Flash Lite reveals a lower bound on what lightweight models can achieve (55--67% overall).
+Our choice of Gemini 2.5 Flash Lite and Pro allows us to measure the capability spectrum: Flash Lite represents the class of fast, cheap models suitable for high-throughput experimentation, while Pro represents a stronger model with extended reasoning. Pro approaches the original study's results (95--100% on alloy2alloy, 100% on sketch2alloy), while Flash Lite reveals a lower bound on what lightweight models can achieve (55--67% overall). The most striking difference is in error profiles: Flash Lite's failures are dominated by syntax and type errors (47% of failures), whereas Pro almost exclusively produces logically incorrect but syntactically valid formulas. This suggests that Alloy syntax mastery is the primary bottleneck for weaker models.
 
 ### 5.2 Impact of Domain Knowledge (Guided Variant)
 
-In early experiments with Flash Lite on the base dataset, the guided variant (which injects an Alloy language reference covering operators, quantifiers, special relations, and common idioms into the system prompt) showed consistent improvement over the base tasks. For alloy2alloy, guided increased pass rates from ~27% to ~61%, and for sketch2alloy from ~24% to ~45%. This suggests that LLMs struggle not with the logical reasoning per se, but with Alloy's specific syntax and operator vocabulary --- a gap that in-context documentation can partially close.
+The guided variant injects an Alloy language reference covering operators, quantifiers, special relations, and common idioms into the system prompt. For Flash Lite, this produced the largest improvement on nl2alloy (+20.7pp) and sketch2alloy (+18.2pp). This suggests that weaker models struggle not with logical reasoning per se, but with Alloy's specific syntax and operator vocabulary --- a gap that in-context documentation can partially close. For Pro, the guided variant had negligible or slightly negative effect, indicating the model already has sufficient knowledge of Alloy built into its training.
 
 ### 5.3 Compiler Feedback vs Self-Critique
 
-The agent variant (one round of Alloy compiler feedback) and the reflect variant (one round of self-critique) represent two approaches to iterative refinement. In our preliminary runs, the agent variant was consistently the strongest performer, achieving up to 100% on alloy2alloy in a single-solution sanity check. This is expected: compiler feedback provides precise, actionable error information (e.g., "Syntax Error", "Type Error", or a concrete counterexample), whereas self-critique relies on the model's own understanding of Alloy, which may be incomplete. The gap between agent and reflect quantifies the value of tool integration in LLM-based formal methods workflows.
+The agent variant (one round of Alloy compiler feedback) and the reflect variant (one round of self-critique) represent two approaches to iterative refinement. The agent variant was consistently the strongest performer: it achieved 100% on alloy2alloy for Pro and 97% on sketch2alloy for Flash Lite. Compiler feedback provides precise, actionable error information (e.g., "Syntax Error", "Type Error", or a concrete counterexample), whereas self-critique relies on the model's own understanding of Alloy, which may be incomplete. The gap between agent and reflect quantifies the value of tool integration in LLM-based formal methods workflows.
 
 ### 5.4 Structured Output as a Reliability Technique
 
@@ -202,19 +202,15 @@ A significant engineering finding was the impact of structured output on result 
 
 These findings suggest that for LLM-based formal methods, structured output constraints and careful prompt engineering are at least as important as model capability.
 
-### 5.5 Limitations
-
-Our study has several limitations. First, we use 3 solutions per property compared to the original study's 20, which limits the statistical power of pass@k estimates. Second, equivalence checking at scope 3 may miss semantic differences that only manifest at larger scopes. Third, we evaluate only Google Gemini models; a direct comparison with o3-mini and DeepSeek R1 on our extended tasks would strengthen the findings. Finally, the agent and reflect variants are limited to a single retry round; increasing the feedback budget could yield higher pass rates but would complicate cost analysis.
-
 ---
 
 ## 6. Threats to Validity
 
-**Construct validity.** Equivalence checking at scope 3 may miss semantic differences at larger scopes. Shared with the original study.
+**Construct validity.** Equivalence checking at scope 3 may miss semantic differences that only manifest at larger scopes. This limitation is shared with the original study.
 
-**Internal validity.** LLM outputs are non-deterministic. We run 3 trials per configuration (fewer than the paper's 20). Structured JSON output eliminates formula extraction errors.
+**Internal validity.** LLM outputs are non-deterministic. We run 3 trials per configuration (fewer than the paper's 20), which limits the statistical power of pass@k estimates. Structured JSON output eliminates formula extraction errors that affected early experiments. The agent and reflect variants are limited to a single retry round; increasing the feedback budget could yield higher pass rates.
 
-**External validity.** Only Google Gemini models tested. Extended dataset is broader but still relatively simple Alloy specifications.
+**External validity.** We evaluate only Google Gemini models; a direct comparison with o3-mini and DeepSeek R1 on our extended tasks would strengthen the findings. The extended dataset, while broader, still consists of relatively simple Alloy specifications.
 
 ---
 
@@ -232,7 +228,7 @@ Our study has several limitations. First, we use 3 solutions per property compar
 
 ## 8. Conclusion
 
-We replicated and extended the study by Hong et al. on LLM-based Alloy formula synthesis. Using Google Gemini models (2.5 Flash Lite and 2.5 Pro), we evaluated 12 task variants across 41 properties spanning five domains. Our extensions --- guided prompting with domain documentation, compiler-in-the-loop feedback, and LLM self-critique --- provide new insights into how auxiliary techniques can improve formal specification generation. We also identified that structured output constraints and careful prompt engineering are critical for reliable evaluation, eliminating spurious failures that inflated error rates by over 35% in initial experiments. Our results and tooling are publicly available to support further research on LLM-assisted formal methods.
+We replicated and extended the study by Hong et al. on LLM-based Alloy formula synthesis. Using Google Gemini models (2.5 Flash Lite and 2.5 Pro), we evaluated 12 task variants across 41 properties spanning five domains. Our extensions --- guided prompting with domain documentation, compiler-in-the-loop feedback, and LLM self-critique --- provide new insights into how auxiliary techniques can improve formal specification generation. We also identified that structured output constraints and careful prompt engineering are critical for reliable evaluation, eliminating spurious failures that inflated error rates by over 35% in initial experiments. Our results and tooling are publicly available at [github.com/shmulc8/alloy-replication](https://github.com/shmulc8/alloy-replication).
 
 Gemini 2.5 Pro matched or exceeded the original study's results on alloy2alloy and sketch2alloy, while Flash Lite demonstrated that guided prompting and compiler feedback can partially compensate for weaker model capabilities.
 

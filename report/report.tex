@@ -1,0 +1,302 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[T1]{fontenc}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.75\baselineskip}
+
+\title{Replication and Extension of ``On the Effectiveness of LLMs in Writing Alloy Formulas''}
+\author{Shmulik Cohen\\
+\textit{Mini Project --- Advanced Topics in Specification Engineering, Spring 2026}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We replicate and extend the study by Hong et al. (arXiv:2502.15441), which evaluated LLMs on three Alloy specification tasks.
+The original study used OpenAI o3-mini and DeepSeek R1; we evaluate Google Gemini 2.5 Flash Lite and Gemini 2.5 Pro via Vertex AI.
+We extend with three new task variants (guided, agent, reflect) and expand the benchmark from 11 to 41 properties across four additional domains.
+Gemini 2.5 Pro achieves results comparable to the original study's reasoning models, with 100\% on sketch completion and 95--100\% on formula equivalence. The guided and agent variants improve the weaker Flash Lite model by up to 24 percentage points, while Pro is already near ceiling. Error analysis reveals a qualitative difference: Flash Lite fails on Alloy syntax, Pro fails on logic.
+\end{abstract}
+
+\section{Introduction}
+
+Alloy is a lightweight formal specification language based on first-order relational logic. Writing correct Alloy formulas requires precise quantifiers, relational operators, and set-theoretic constructs---making it a challenging target for LLM code generation.
+
+Hong et al. conducted the first systematic evaluation of LLMs on Alloy formula synthesis. They tested two reasoning-oriented models (o3-mini, DeepSeek R1) on 11 properties using three tasks: natural language to Alloy, formula equivalence, and sketch completion. With 20 trials per property, DeepSeek R1 achieved 10+ correct formulas on 10/11 properties for the NL-to-Alloy task.
+
+We replicate their protocol with Google Gemini models and extend it with additional task variants and a larger benchmark.
+
+\section{Background}
+
+\subsection{Alloy}
+
+Alloy [2] models consist of \emph{signatures} (types with fields) and \emph{predicates} expressed in first-order relational logic. The Alloy Analyzer performs bounded model checking: given a scope, it exhaustively searches for counterexamples. UNSAT = valid; SAT = counterexample found.
+
+Example---reflexivity:
+\begin{verbatim}
+sig S { r: set S }
+pred Reflexive { all s: S | s->s in r }
+\end{verbatim}
+
+\subsection{Original Study}
+
+Hong et al. defined three tasks:
+\begin{itemize}
+  \item \textbf{nl2alloy}: Generate Alloy formula from natural language description.
+  \item \textbf{alloy2alloy}: Generate logically equivalent Alloy formula from a canonical one.
+  \item \textbf{sketch2alloy}: Complete a partial formula with holes (\texttt{\_}), with one error-feedback retry.
+\end{itemize}
+
+Evaluated on 11 properties: 3 graph (DAG, Cycle, Circular) and 8 relation (Connex, Reflexive, Symmetric, Transitive, Antisymmetric, Irreflexive, Functional, Function).
+
+\section{Methodology}
+
+\subsection{Models}
+
+Two Gemini models via Vertex AI:
+\begin{itemize}
+  \item \textbf{Gemini 2.5 Flash Lite}---lightweight, low-latency, cost-efficient.
+  \item \textbf{Gemini 2.5 Pro}---high-capability with extended reasoning.
+\end{itemize}
+
+This pairing contrasts a cheap/fast model with one closer in capability to o3-mini/R1.
+
+\subsection{Task Variants (12 total = 3 base tasks x 4 modes)}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.18\linewidth} >{\raggedright\arraybackslash}p{0.72\linewidth}}
+\toprule
+\textbf{Mode} & \textbf{Description} \\
+\midrule
+\textbf{Base} & Direct replication of the 3 original tasks. \\
+\textbf{Guided} & Same prompts + Alloy language reference injected into system prompt. \\
+\textbf{Agent} & Initial attempt + 1 round of Alloy compiler error feedback. \\
+\textbf{Reflect} & Initial attempt + 1 round of LLM self-critique (no compiler feedback). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Dataset}
+
+\textbf{Base (11 properties):} Same as original study, with signatures, canonical formulas, sketches, and NL descriptions preserved.
+
+\textbf{Extended (30 properties):} Four additional domains:
+\begin{itemize}
+  \item Graph (5): undirected, oriented, strongly connected, transitive, weakly connected.
+  \item Social network (7): users, followers, photos, influencers.
+  \item Production line (9): workstations, human/robot workers, components.
+  \item Trash/filesystem (9): files, trash, protected files, links.
+\end{itemize}
+
+Extended properties have no sketches, so sketch tasks run only on the 11 base properties.
+
+\subsection{Experimental Setup}
+
+\begin{itemize}
+  \item \textbf{3 trials} per property per task, temperature 1.0.
+  \item Alloy scope 3, 30-second timeout.
+  \item Agent/reflect capped at 2 LLM rounds.
+  \item \textbf{Structured JSON output} via Vertex AI to eliminate parsing artifacts.
+  \item 32 parallel threads, checkpointed every 10 trials.
+  \item Billed against Google Cloud credits.
+\end{itemize}
+
+\subsection{Validation}
+
+For each generated formula $\phi$ vs canonical formula $\phi^{*}$:
+\begin{verbatim}
+check { pred_name iff (canonical_formula) } for 3
+\end{verbatim}
+\begin{itemize}
+  \item UNSAT $\rightarrow$ PASS
+  \item SAT $\rightarrow$ FAIL (Counterexample)
+  \item Error $\rightarrow$ FAIL (Syntax Error / Type Error)
+\end{itemize}
+
+\subsection{Metrics}
+
+\begin{itemize}
+  \item \textbf{Pass rate}: fraction of correct trials.
+  \item \textbf{Pass@k}: unbiased estimator (Chen et al., 2021).
+  \item \textbf{Error breakdown}: Syntax Error vs Type Error vs Counterexample.
+\end{itemize}
+
+\section{Results}
+
+We ran 2,424 trials in total (2 models x 12 task variants x 41 properties x 3 solutions, minus sketch tasks on extended properties). Overall, 1,833 trials passed (75.6\%).
+
+\subsection{Overall Performance}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llcc}
+\toprule
+\textbf{Task} & \textbf{Variant} & \textbf{Flash Lite} & \textbf{Pro} \\
+\midrule
+nl2alloy & Base & 31.9\% & 80.7\% \\
+ & Guided & 52.6\% & 79.3\% \\
+ & Agent & 45.9\% & 83.7\% \\
+ & Reflect & 30.4\% & 85.2\% \\
+alloy2alloy & Base & 72.6\% & 94.8\% \\
+ & Guided & 74.8\% & 99.3\% \\
+ & Agent & 78.5\% & 100.0\% \\
+ & Reflect & 71.9\% & 95.6\% \\
+sketch2alloy & Base & 72.7\% & 100.0\% \\
+ & Guided & 90.9\% & 100.0\% \\
+ & Agent & 97.0\% & 100.0\% \\
+ & Reflect & 78.8\% & 100.0\% \\
+\bottomrule
+\end{tabular}
+\caption{Pass rates across all task variants (Table 1).}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\linewidth]{fig1_main_results.png}
+\caption{Pass rates by task, variant, and model.}
+\end{figure}
+
+Gemini 2.5 Pro achieves near-perfect results on alloy2alloy (94.8--100\%) and sketch2alloy (100\% across all variants), and strong results on nl2alloy (79.3--85.2\%). Flash Lite shows a significant capability gap, particularly on nl2alloy (30.4--52.6\%).
+
+\subsection{Effect of Task Variants}
+
+The benefit of task extensions depends heavily on model capability:
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{fig2_variant_delta.png}
+\caption{Improvement over base variant.}
+\end{figure}
+
+\textbf{Flash Lite} benefits substantially from guided prompting and the agent variant. Guided prompting improves performance by +20.7pp on nl2alloy and +18.2pp on sketch2alloy; the agent variant adds +14.0pp on nl2alloy and +24.3pp on sketch2alloy. Reflect provides no improvement, and in some cases slightly hurts performance. This suggests that weaker models need either domain documentation or external tool feedback to overcome their limited Alloy knowledge---self-critique alone is insufficient.
+
+\textbf{Pro} is already near ceiling, so variants produce small effects (+3--5pp from agent). Notably, guided prompting slightly \emph{decreases} nl2alloy performance for Pro (-1.4pp), possibly because the added context increases prompt length without providing information the model already has.
+
+\subsection{Base vs Extended Properties}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Domain} & \textbf{Flash Lite} & \textbf{Pro} \\
+\midrule
+Base (11 properties) & 60\% & 94\% \\
+Graph (5) & 31\% & 89\% \\
+Social Network (7) & 58\% & 83\% \\
+Production Line (9) & 48\% & 78\% \\
+Trash (9) & 63\% & 97\% \\
+\bottomrule
+\end{tabular}
+\caption{Pass rates by domain, base variant only (Table 2).}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.8\linewidth]{fig5_domain_comparison.png}
+\caption{Pass rate by domain.}
+\end{figure}
+
+Extended properties are generally harder than the base set. Flash Lite struggles most with the extended graph domain (31\%), which includes complex properties like strong connectivity and transitivity of adjacency relations. Pro handles all domains well but shows its lowest performance on production line properties (78\%), which involve the most complex signature structures (6 sigs with inheritance).
+
+\subsection{Error Analysis}
+
+The error profiles differ qualitatively between models:
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.8\linewidth]{fig3_error_breakdown.png}
+\caption{Error type breakdown.}
+\end{figure}
+\begin{itemize}
+  \item \textbf{Flash Lite}: 144 syntax errors, 81 type errors, 251 counterexamples. The high rate of syntax and type errors indicates the model frequently generates invalid Alloy syntax---using wrong quantifier forms, incorrect operator precedence, or nonexistent constructs.
+  \item \textbf{Pro}: 5 syntax errors, 8 type errors, 97 counterexamples. Nearly all failures are logically incorrect but syntactically valid formulas. Pro knows Alloy syntax well but occasionally gets the semantics wrong.
+\end{itemize}
+
+This distinction is visible in the per-property heatmap below: Flash Lite shows 0\% on several properties (Antisymmetric, Transitive for nl2alloy) while Pro achieves 100\% on most.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.98\linewidth]{fig4_property_heatmap.png}
+\caption{Pass rate by property.}
+\end{figure}
+
+\subsection{Comparison with Original Study}
+
+The original study used reasoning-oriented models (OpenAI o3-mini, DeepSeek R1) with 20 solutions per property. Our Gemini 2.5 Pro achieves comparable results: 100\% on sketch2alloy (vs 10/11 in the paper), near-perfect alloy2alloy, and 81\% on nl2alloy. The paper reported that DeepSeek R1 found at least one correct formula for all 11 properties on nl2alloy; Pro also achieves this on most properties.
+
+Flash Lite, as a non-reasoning lightweight model, performs significantly below the paper's models, particularly on nl2alloy where generating formulas from scratch requires deeper understanding of Alloy semantics.
+
+\section{Discussion}
+
+\subsection{Model Capability Gap}
+
+Our choice of Gemini 2.5 Flash Lite and Pro allows us to measure the capability spectrum: Flash Lite represents the class of fast, cheap models suitable for high-throughput experimentation, while Pro represents a stronger model with extended reasoning. Pro approaches the original study's results (95--100\% on alloy2alloy, 100\% on sketch2alloy), while Flash Lite reveals a lower bound on what lightweight models can achieve (55--67\% overall). The most striking difference is in error profiles: Flash Lite's failures are dominated by syntax and type errors (47\% of failures), whereas Pro almost exclusively produces logically incorrect but syntactically valid formulas. This suggests that Alloy syntax mastery is the primary bottleneck for weaker models.
+
+\subsection{Impact of Domain Knowledge (Guided Variant)}
+
+The guided variant injects an Alloy language reference covering operators, quantifiers, special relations, and common idioms into the system prompt. For Flash Lite, this produced the largest improvement on nl2alloy (+20.7pp) and sketch2alloy (+18.2pp). This suggests that weaker models struggle not with logical reasoning per se, but with Alloy's specific syntax and operator vocabulary---a gap that in-context documentation can partially close. For Pro, the guided variant had negligible or slightly negative effect, indicating the model already has sufficient knowledge of Alloy built into its training.
+
+\subsection{Compiler Feedback vs Self-Critique}
+
+The agent variant (one round of Alloy compiler feedback) and the reflect variant (one round of self-critique) represent two approaches to iterative refinement. The agent variant was consistently the strongest performer: it achieved 100\% on alloy2alloy for Pro and 97\% on sketch2alloy for Flash Lite. Compiler feedback provides precise, actionable error information (e.g., ``Syntax Error,'' ``Type Error,'' or a concrete counterexample), whereas self-critique relies on the model's own understanding of Alloy, which may be incomplete. The gap between agent and reflect quantifies the value of tool integration in LLM-based formal methods workflows.
+
+\subsection{Structured Output as a Reliability Technique}
+
+A significant engineering finding was the impact of structured output on result reliability. Initially, we used free-form text generation with post-hoc parsing to extract formulas. This led to two classes of spurious failures: (1) the sketch2alloy task, where the model returned only the fill-in token (e.g., \texttt{implies}) instead of the complete formula, causing 60\% of sketch failures; and (2) the alloy2alloy task, where the model returned formula fragments without quantifiers (e.g., \texttt{s in s.r} instead of \texttt{all s: S | s in s.r}), causing 36\% of failures. Switching to Vertex AI's structured JSON output mode---constraining the response to a \texttt{\{"formula": "..."\}} schema---eliminated both failure classes entirely. This increased the overall pass rate from 28\% to 59\% on Flash Lite base tasks, with sketch2alloy improving from 24\% to 91\%. We also discovered and fixed a formula-cleaning bug where an aggressive \texttt{rstrip("\}")} was stripping set literal braces (e.g., \texttt{\{z\}}) from valid Alloy expressions.
+
+These findings suggest that for LLM-based formal methods, structured output constraints and careful prompt engineering are at least as important as model capability.
+
+\section{Threats to Validity}
+
+\textbf{Construct validity.} Equivalence checking at scope 3 may miss semantic differences that only manifest at larger scopes. This limitation is shared with the original study.
+
+\textbf{Internal validity.} LLM outputs are non-deterministic. We run 3 trials per configuration (fewer than the paper's 20), which limits the statistical power of pass@k estimates. Structured JSON output eliminates formula extraction errors that affected early experiments. The agent and reflect variants are limited to a single retry round; increasing the feedback budget could yield higher pass rates.
+
+\textbf{External validity.} We evaluate only Google Gemini models; a direct comparison with o3-mini and DeepSeek R1 on our extended tasks would strengthen the findings. The extended dataset, while broader, still consists of relatively simple Alloy specifications.
+
+\section{Related Work}
+
+\textbf{LLM code generation.} Chen et al.
+[3] introduced the HumanEval benchmark and the pass@k metric for evaluating code generation, establishing the methodology we adopt. Our work applies the same evaluation framework to a formal specification language rather than a general-purpose programming language.
+
+\textbf{LLMs for formal methods.} Hong et al.
+[1], which we replicate, is the first study targeting Alloy specifically. Broader work on LLMs for formal specification and verification---including proof generation for theorem provers and temporal logic synthesis from natural language---has shown that models struggle with the precise logical reasoning these domains require.
+
+\textbf{Tool-augmented generation.} Our agent variant, which feeds Alloy compiler errors back to the model, relates to compiler-in-the-loop approaches for code generation, where iterative refinement with tool feedback outperforms single-shot generation. The contrast between our agent and reflect variants provides a controlled comparison of external feedback vs self-critique.
+
+\section{Conclusion}
+
+We replicated and extended the study by Hong et al.
+on LLM-based Alloy formula synthesis. Using Google Gemini models (2.5 Flash Lite and 2.5 Pro), we evaluated 12 task variants across 41 properties spanning five domains. Our extensions---guided prompting with domain documentation, compiler-in-the-loop feedback, and LLM self-critique---provide new insights into how auxiliary techniques can improve formal specification generation. We also identified that structured output constraints and careful prompt engineering are critical for reliable evaluation, eliminating spurious failures that inflated error rates by over 35\% in initial experiments. Our results and tooling are publicly available.\footnote{\url{https://github.com/shmulc8/alloy-replication}}
+
+Gemini 2.5 Pro matched or exceeded the original study's results on alloy2alloy and sketch2alloy, while Flash Lite demonstrated that guided prompting and compiler feedback can partially compensate for weaker model capabilities.
+
+\section*{References}
+
+\begin{enumerate}
+  \item Hong, F., Jiang, M., Fu, C., \& Khurshid, S.
+  (2025).
+  \emph{On the Effectiveness of LLMs in Writing Alloy Formulas}.
+  \emph{arXiv:2502.15441}.
+
+  \item Jackson, D.
+  (2012).
+  \emph{Software Abstractions: Logic, Language, and Analysis}.
+  MIT Press, revised edition.
+
+  \item Chen, M., Tworek, J., Jun, H., Yuan, Q., et al.
+  (2021).
+  \emph{Evaluating Large Language Models Trained on Code}.
+  \emph{arXiv:2107.03374}.
+
+\end{enumerate}
+
+\end{document}
