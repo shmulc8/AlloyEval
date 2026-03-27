@@ -9,5 +9,3 @@ __pycache__/
 uv.lock
 .claude/
 .DS_Store
-main.py
-skillsbench_task/
