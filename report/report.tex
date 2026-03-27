@@ -10,9 +10,9 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.75\baselineskip}
 
-\title{Replication and Extension of ``On the Effectiveness of LLMs in Writing Alloy Formulas''}
+\title{AlloyEval: Replication and Extension of ``On the Effectiveness of LLMs in Writing Alloy Formulas''}
 \author{Shmulik Cohen\\
-\textit{Mini Project --- Advanced Topics in Specification Engineering, Spring 2026}}
+\textit{Advanced Topics in Specification Engineering, Spring 2026}}
 \date{}
 
 \begin{document}
@@ -91,7 +91,7 @@ The alloy2alloy prompt instead shows the canonical formula and asks for an equiv
 
 \textbf{Base (11 properties).} We use the same 11 properties from the original study, preserving their signatures, canonical formulas, sketches, and natural language descriptions.
 
-\textbf{Extended (30 properties).} We expand the benchmark with 30 additional properties across four domains:
+\textbf{Extended (30 properties).} We expand the benchmark with 30 additional properties drawn from Alloy4Fun [4], an online educational platform for learning Alloy. Alloy4Fun presents users with a predicate description and signature structure, then lets them write the formula body with automated feedback from the Alloy analyzer---a workflow closely analogous to our nl2alloy and agent tasks, but with human students instead of LLMs. The exercises span four domains:
 \begin{itemize}
   \item \textbf{Graph} (5): undirected, oriented, strongly connected, transitive, weakly connected
   \item \textbf{Social network} (7): invariants over users, followers, photos, and influencers
@@ -99,7 +99,7 @@ The alloy2alloy prompt instead shows the canonical formula and asks for an equiv
   \item \textbf{Trash/filesystem} (9): file system operations with trash, protected files, and links
 \end{itemize}
 
-The extended properties have more complex signature structures (up to 6 signatures with inheritance) but do not include sketches, so sketch-based tasks run only on the 11 base properties.
+The extended properties have more complex signature structures (up to 6 signatures with inheritance) compared to the base set's single-signature models. They do not include sketches, so sketch-based tasks run only on the 11 base properties. Using Alloy4Fun exercises as our extended benchmark provides a natural comparison point: these are problems designed for human learners, and we can now ask how LLMs perform on the same challenges.
 
 \subsection{Experimental Setup}
 
@@ -256,6 +256,7 @@ We replicated and extended the study by Hong et al.\ on LLM-based Alloy formula 
   \item Hong, F., Jiang, M., Fu, C., \& Khurshid, S. (2025). \emph{On the Effectiveness of LLMs in Writing Alloy Formulas}. \emph{arXiv:2502.15441}.
   \item Jackson, D. (2012). \emph{Software Abstractions: Logic, Language, and Analysis}. MIT Press, revised edition.
   \item Chen, M., Tworek, J., Jun, H., Yuan, Q., et al. (2021). \emph{Evaluating Large Language Models Trained on Code}. \emph{arXiv:2107.03374}.
+  \item Macedo, N., Cunha, A., Pereira, J., Carvalho, R., Silva, R., Paiva, A.C.R., Ramalho, M.S., \& Silva, D. (2019). \emph{Sharing and Learning Alloy on the Web}. \emph{arXiv:1907.02275}.
 \end{enumerate}
 
 \end{document}

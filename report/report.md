@@ -1,8 +1,8 @@
-# Replication and Extension of "On the Effectiveness of LLMs in Writing Alloy Formulas"
+# AlloyEval: Replication and Extension of "On the Effectiveness of LLMs in Writing Alloy Formulas"
 
 **Shmulik Cohen**
 
-*Mini Project --- Advanced Topics in Specification Engineering, Spring 2026*
+*Advanced Topics in Specification Engineering, Spring 2026*
 
 ---
 
@@ -87,13 +87,13 @@ The alloy2alloy prompt instead shows the canonical formula and asks for an equiv
 
 **Base (11 properties).** We use the same 11 properties from the original study, preserving their signatures, canonical formulas, sketches, and natural language descriptions.
 
-**Extended (30 properties).** We expand the benchmark with 30 additional properties across four domains:
+**Extended (30 properties).** We expand the benchmark with 30 additional properties drawn from Alloy4Fun [4], an online educational platform for learning Alloy. Alloy4Fun presents users with a predicate description and signature structure, then lets them write the formula body with automated feedback from the Alloy analyzer --- a workflow closely analogous to our nl2alloy and agent tasks, but with human students instead of LLMs. The exercises span four domains:
 - **Graph** (5): undirected, oriented, strongly connected, transitive, weakly connected
 - **Social network** (7): invariants over users, followers, photos, and influencers
 - **Production line** (9): factory workflow with workstations, human/robot workers, and components
 - **Trash/filesystem** (9): file system operations with trash, protected files, and links
 
-The extended properties have more complex signature structures (up to 6 signatures with inheritance) but do not include sketches, so sketch-based tasks run only on the 11 base properties.
+The extended properties have more complex signature structures (up to 6 signatures with inheritance) compared to the base set's single-signature models. They do not include sketches, so sketch-based tasks run only on the 11 base properties. Using Alloy4Fun exercises as our extended benchmark provides a natural comparison point: these are problems designed for human learners, and we can now ask how LLMs perform on the same challenges.
 
 ### 3.4 Experimental Setup
 
@@ -238,3 +238,4 @@ We replicated and extended the study by Hong et al. on LLM-based Alloy formula s
 1. Hong, F., Jiang, M., Fu, C., & Khurshid, S. (2025). On the Effectiveness of LLMs in Writing Alloy Formulas. *arXiv:2502.15441*.
 2. Jackson, D. (2012). *Software Abstractions: Logic, Language, and Analysis.* MIT Press, revised edition.
 3. Chen, M., Tworek, J., Jun, H., Yuan, Q., et al. (2021). Evaluating Large Language Models Trained on Code. *arXiv:2107.03374*.
+4. Macedo, N., Cunha, A., Pereira, J., Carvalho, R., Silva, R., Paiva, A.C.R., Ramalho, M.S., & Silva, D. (2019). Sharing and Learning Alloy on the Web. *arXiv:1907.02275*.
