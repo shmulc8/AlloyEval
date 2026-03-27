@@ -8,61 +8,38 @@ See [`report/report.md`](report/report.md) for the full write-up.
 
 ---
 
-## Repository Structure
+## Prerequisites
 
-```
-alloy-replication/
-├── run_experiment.py              # Main CLI entry point
-├── export_results.py              # Export results to CSV pivot tables
-├── pyproject.toml
-├── .env.example                   # API key template
-│
-├── alloy_replication/             # Core package
-│   ├── config.py                  # Models, paths, experiment parameters
-│   ├── data.py                    # Property / TrialResult dataclasses + loaders
-│   ├── llm.py                     # Vertex AI client, structured output, prompts
-│   ├── alloy.py                   # Alloy CLI integration (.als builder + validator)
-│   ├── experiment.py              # Parallel trial runner with progress + checkpoints
-│   ├── analysis.py                # pass@k, CSV export, bar charts, heatmaps
-│   └── guide.py                   # Alloy language reference (for guided tasks)
-│
-├── data/
-│   ├── graph_properties.jsonl     # 3 graph properties (DAG, Cycle, Circular)
-│   ├── relation_properties.jsonl  # 8 relation properties (Connex, Reflexive, ...)
-│   └── extended/                  # 30 extended properties (4 domains)
-│
-├── report/
-│   ├── report.md                  # Full project report
-│   ├── generate_figures.py        # Regenerate all figures from results
-│   └── fig*.png                   # Report figures
-│
-└── output/                        # Created at runtime (gitignored)
+### Alloy Analyzer
+
+This experiment requires the [Alloy Analyzer](https://alloytools.org/) CLI to validate generated formulas. The runner calls it for every trial to check equivalence with the canonical solution.
+
+**macOS (Homebrew):**
+```bash
+brew install alloy-analyzer
 ```
 
----
+**Other platforms:** Download from [alloytools.org](https://alloytools.org/download.html) and ensure the `alloy` binary is on your `PATH`. Requires Java 11+.
 
-## Setup
+Verify it works:
+```bash
+alloy --version
+```
 
-### 1. Install dependencies
+### Vertex AI API Key
+
+You need a Google Cloud Vertex AI API key to call Gemini models. Create one in the [Google Cloud Console](https://console.cloud.google.com/) under APIs & Services > Credentials.
+
+```bash
+cp .env.example .env
+# Edit .env and add your key:
+# VERTEX_API_KEY=your-key-here
+```
+
+### Python Dependencies
 
 ```bash
 uv sync
-```
-
-### 2. Install the Alloy CLI
-
-```bash
-brew install alloy-analyzer   # macOS
-```
-
-Verify: `alloy --version`
-
-### 3. Configure API key
-
-Copy `.env.example` to `.env` and add your Vertex AI API key:
-
-```
-VERTEX_API_KEY=your-key-here
 ```
 
 ---
