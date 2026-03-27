@@ -102,9 +102,8 @@ check { pred_name iff (canonical_formula) } for 3
 
 ### 3.6 Metrics
 
-- **Pass rate**: fraction of correct trials
-- **Pass@k**: unbiased estimator (Chen et al., 2021)
-- **Error breakdown**: Syntax Error vs Type Error vs Counterexample
+- **Pass rate**: fraction of trials that produce a correct formula
+- **Error breakdown**: distribution of failure types (Syntax Error, Type Error, Counterexample)
 
 ---
 
@@ -216,7 +215,7 @@ These findings suggest that for LLM-based formal methods, structured output cons
 
 ## 7. Related Work
 
-**LLM code generation.** Chen et al. [3] introduced the HumanEval benchmark and the pass@k metric for evaluating code generation, establishing the methodology we adopt. Our work applies the same evaluation framework to a formal specification language rather than a general-purpose programming language.
+**LLM code generation.** Chen et al. [3] introduced the HumanEval benchmark for evaluating LLM code generation. Our work applies a similar evaluation framework to a formal specification language rather than a general-purpose programming language.
 
 **LLMs for formal methods.** Hong et al. [1], which we replicate, is the first study targeting Alloy specifically. Broader work on LLMs for formal specification and verification --- including proof generation for theorem provers and temporal logic synthesis from natural language --- has shown that models struggle with the precise logical reasoning these domains require.
 
