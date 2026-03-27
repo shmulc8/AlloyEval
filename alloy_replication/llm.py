@@ -1,14 +1,19 @@
 """
 LLM client, response cleaning, and prompt templates for the three tasks.
+Prompt wording follows Hong, Jiang, Fu & Khurshid (arXiv:2502.15441).
 """
+import json
 import os
 import re
+import time
 from typing import Optional
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 from .config import TEMPERATURE
 from .data import Property
+from .guide import ALLOY_GUIDE
 
 # ── Client ─────────────────────────────────────────────────────────────────
 
@@ -18,30 +23,69 @@ SYSTEM_PROMPT = (
     "Do not include the pred declaration, curly braces, or any explanation."
 )
 
-
-def make_client(config: dict) -> OpenAI:
-    kwargs: dict = {"api_key": os.getenv(config["api_key_env"], "")}
-    if config.get("base_url"):
-        kwargs["base_url"] = config["base_url"]
-    return OpenAI(**kwargs)
+SYSTEM_PROMPT_WITH_GUIDE = SYSTEM_PROMPT + "\n\n" + ALLOY_GUIDE
 
 
-def query_llm(client: OpenAI, model: str, user_prompt: str) -> Optional[str]:
-    """Send a prompt and return the raw text response, or None on error."""
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=TEMPERATURE,
-            max_tokens=512,
-        )
-        return resp.choices[0].message.content
-    except Exception as e:
-        print(f"  LLM error: {e}")
-        return None
+def make_client(config: dict) -> genai.Client:
+    """Create a Vertex AI client from config."""
+    return genai.Client(
+        api_key=os.getenv(config["api_key_env"], ""),
+        vertexai=True,
+    )
+
+
+def query_llm(client: genai.Client, model: str, user_prompt: str) -> Optional[str]:
+    """Send a single-turn prompt and return the raw text response, or None on error."""
+    return query_llm_with_messages(client, model, [{"role": "user", "content": user_prompt}])
+
+
+def query_llm_with_messages(
+    client: genai.Client,
+    model: str,
+    messages: list[dict],
+    max_retries: int = 5,
+    system_prompt: Optional[str] = None,
+) -> Optional[str]:
+    """Send a multi-turn conversation via Vertex AI and return raw text, or None on error."""
+    sys_msg = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+
+    # Convert OpenAI-style messages to google-genai Contents
+    contents = []
+    for msg in messages:
+        role = "model" if msg["role"] == "assistant" else msg["role"]
+        contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+
+    config = types.GenerateContentConfig(
+        system_instruction=sys_msg,
+        temperature=TEMPERATURE,
+        max_output_tokens=2048,
+        response_mime_type="application/json",
+        response_schema={
+            "type": "OBJECT",
+            "properties": {"formula": {"type": "STRING"}},
+            "required": ["formula"],
+        },
+    )
+
+    delay = 20.0
+    for attempt in range(max_retries):
+        try:
+            resp = client.models.generate_content(
+                model=model, contents=contents, config=config,
+            )
+            return json.loads(resp.text)["formula"]
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err or "rate" in err.lower():
+                if attempt < max_retries - 1:
+                    m = re.search(r"retry in (\d+(?:\.\d+)?)s", err)
+                    wait = float(m.group(1)) + 2 if m else delay
+                    time.sleep(wait)
+                    delay = min(delay * 1.5, 120)
+                    continue
+            print(f"  LLM error: {e}")
+            return None
+    return None
 
 
 def clean_formula(raw: Optional[str]) -> Optional[str]:
@@ -55,15 +99,17 @@ def clean_formula(raw: Optional[str]) -> Optional[str]:
     m2 = re.search(r"pred\s+\w+\s*\{(.*)\}", text, re.DOTALL)
     if m2:
         text = m2.group(1).strip()
-    text = text.rstrip("}").strip()
+    # Remove a single trailing '}' only if braces are unbalanced (leftover pred wrapper)
+    if text.count("}") > text.count("{"):
+        text = text[:text.rfind("}")].strip()
     text = text.replace('"""', "").strip()
     return text if text else None
 
 
-# ── Prompt templates ────────────────────────────────────────────────────────
+# ── Prompt templates (aligned with paper) ──────────────────────────────────
 
 def prompt_nl2alloy(prop: Property) -> str:
-    """Task 1: Natural Language → Alloy."""
+    """Task 1: Natural Language → Alloy (paper: §III-A)."""
     return (
         f"Implement the following Alloy predicate {prop.predicate_name} "
         f"as defined in the comments:\n\n"
@@ -71,40 +117,74 @@ def prompt_nl2alloy(prop: Property) -> str:
         f"pred {prop.predicate_name} {{\n"
         f"  -- {prop.prompt}\n"
         f"}}\n\n"
-        f"Output only the formula in the predicate body."
+        f"Output only the complete formula that goes inside the predicate body. "
+        f"Include all quantifiers and operators — do not include the pred declaration or braces."
     )
 
 
 def prompt_alloy2alloy(prop: Property) -> str:
-    """Task 2: Alloy → Alloy (generate equivalent alternative)."""
+    """Task 2: Alloy → Alloy (paper: §III-B)."""
     return (
-        f"Given the following Alloy predicate:\n\n"
+        f"Give an Alloy formula that is equivalent to the following predicate "
+        f"{prop.predicate_name}:\n\n"
         f"{prop.signatures}\n"
         f"pred {prop.predicate_name} {{\n"
         f"  {prop.canonical_formula}\n"
         f"}}\n\n"
-        f"Create an alternative but logically equivalent Alloy formula for this predicate.\n"
-        f"Output only the formula in the predicate body."
+        f"Output only the complete formula that goes inside the predicate body. "
+        f"Include all quantifiers and operators — do not include the pred declaration or braces."
     )
 
 
 def prompt_sketch2alloy(prop: Property) -> str:
-    """Task 3: Sketch → Alloy (fill holes marked with _)."""
+    """Task 3: Sketch → Alloy, first attempt (paper: §III-C)."""
     return (
-        f"Complete the following Alloy sketch to satisfy the property described in the comments:\n\n"
+        f"Complete the following sketch of the Alloy predicate {prop.predicate_name} "
+        f"with respect to the property defined in the comments:\n\n"
         f"{prop.signatures}\n"
         f"pred {prop.predicate_name} {{\n"
         f"  -- {prop.prompt}\n"
         f"  {prop.sketch}\n"
         f"}}\n\n"
         f"Hint: {prop.sketch_hint}\n"
-        f"Populate the holes (marked with _) in the sketch. "
-        f"Output only the completed formula in the predicate body."
+        f"Output the entire completed formula (with the blank filled in), not just the missing part. "
+        f"Include all quantifiers and operators — do not include the pred declaration or braces."
+    )
+
+
+def prompt_sketch2alloy_feedback(prop: Property, error_msg: str) -> str:
+    """Task 3: Sketch → Alloy, second attempt with error feedback (paper: §III-C)."""
+    return (
+        f"The formula you provided produced the following error:\n\n"
+        f"{error_msg}\n\n"
+        f"Please fix it. Complete the following sketch of the Alloy predicate "
+        f"{prop.predicate_name} with respect to the property defined in the comments:\n\n"
+        f"{prop.signatures}\n"
+        f"pred {prop.predicate_name} {{\n"
+        f"  -- {prop.prompt}\n"
+        f"  {prop.sketch}\n"
+        f"}}\n\n"
+        f"Hint: {prop.sketch_hint}\n"
+        f"Output the entire completed formula (with the blank filled in), not just the missing part. "
+        f"Include all quantifiers and operators — do not include the pred declaration or braces."
     )
 
 
 TASK_CONFIGS: dict[str, dict] = {
-    "nl2alloy":     {"prompt_fn": prompt_nl2alloy,     "label": "Task 1: NL \u2192 Alloy"},
-    "alloy2alloy":  {"prompt_fn": prompt_alloy2alloy,  "label": "Task 2: Alloy \u2192 Alloy"},
-    "sketch2alloy": {"prompt_fn": prompt_sketch2alloy, "label": "Task 3: Sketch \u2192 Alloy"},
+    # ── Standard tasks (paper replication) ────────────────────────────────
+    "nl2alloy":             {"prompt_fn": prompt_nl2alloy,     "label": "Task 1: NL → Alloy"},
+    "alloy2alloy":          {"prompt_fn": prompt_alloy2alloy,  "label": "Task 2: Alloy → Alloy"},
+    "sketch2alloy":         {"prompt_fn": prompt_sketch2alloy, "label": "Task 3: Sketch → Alloy"},
+    # ── Guided variants (Alloy reference injected into system prompt) ─────
+    "nl2alloy_guided":      {"prompt_fn": prompt_nl2alloy,     "label": "Task 1G: NL → Alloy (guided)",    "guided": True},
+    "alloy2alloy_guided":   {"prompt_fn": prompt_alloy2alloy,  "label": "Task 2G: Alloy → Alloy (guided)", "guided": True},
+    "sketch2alloy_guided":  {"prompt_fn": prompt_sketch2alloy, "label": "Task 3G: Sketch → Alloy (guided)","guided": True},
+    # ── Agent variants (iterative Alloy feedback, up to 5 rounds) ─────────
+    "nl2alloy_agent":       {"prompt_fn": prompt_nl2alloy,     "label": "Task 1A: NL → Alloy (agent)"},
+    "alloy2alloy_agent":    {"prompt_fn": prompt_alloy2alloy,  "label": "Task 2A: Alloy → Alloy (agent)"},
+    "sketch2alloy_agent":   {"prompt_fn": prompt_sketch2alloy, "label": "Task 3A: Sketch → Alloy (agent)"},
+    # ── Reflect variants (iterative self-critique, no Alloy feedback) ──────
+    "nl2alloy_reflect":     {"prompt_fn": prompt_nl2alloy,     "label": "Task 1R: NL → Alloy (reflect)"},
+    "alloy2alloy_reflect":  {"prompt_fn": prompt_alloy2alloy,  "label": "Task 2R: Alloy → Alloy (reflect)"},
+    "sketch2alloy_reflect": {"prompt_fn": prompt_sketch2alloy, "label": "Task 3R: Sketch → Alloy (reflect)"},
 }

@@ -1,0 +1,13 @@
+task,short,total,passed,failed,pass_rate_%
+nl2alloy,NL,45,33,12,73.3
+nl2alloy_guided,NL+G,45,31,14,68.9
+nl2alloy_agent,NL+A,45,40,5,88.9
+nl2alloy_reflect,NL+R,45,38,7,84.4
+alloy2alloy,A2A,45,39,6,86.7
+alloy2alloy_guided,A2A+G,45,39,6,86.7
+alloy2alloy_agent,A2A+A,45,43,2,95.6
+alloy2alloy_reflect,A2A+R,45,44,1,97.8
+sketch2alloy,SKT,11,7,4,63.6
+sketch2alloy_guided,SKT+G,11,5,6,45.5
+sketch2alloy_agent,SKT+A,11,7,4,63.6
+sketch2alloy_reflect,SKT+R,11,5,6,45.5

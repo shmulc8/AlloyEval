@@ -1,59 +1,138 @@
-# Replicating: _On the Effectiveness of LLMs in Writing Alloy Formulas_
+# Replicating and Extending: _On the Effectiveness of LLMs in Writing Alloy Formulas_
 
-Single-notebook replication of Hong, Jiang, Fu & Khurshid (2025).
+Replication and extension of Hong, Jiang, Fu & Khurshid (arXiv:2502.15441, 2025), evaluating LLMs on Alloy formal specification tasks.
 
-## Structure
+**Key results:** Gemini 2.5 Pro achieves 100% on sketch completion and 95--100% on formula equivalence, comparable to the original study's o3-mini and DeepSeek R1. Guided prompting and compiler feedback improve the weaker Flash Lite model by up to 24 percentage points.
+
+See [`report/report.md`](report/report.md) for the full write-up.
+
+---
+
+## Repository Structure
 
 ```
 alloy-replication/
-├── replication.ipynb          # The entire experiment in one notebook
-├── requirements.txt
-├── .env                       # API keys (create this yourself)
+├── run_experiment.py              # Main CLI entry point
+├── export_results.py              # Export results to CSV pivot tables
+├── pyproject.toml
+├── .env.example                   # API key template
+│
+├── alloy_replication/             # Core package
+│   ├── config.py                  # Models, paths, experiment parameters
+│   ├── data.py                    # Property / TrialResult dataclasses + loaders
+│   ├── llm.py                     # Vertex AI client, structured output, prompts
+│   ├── alloy.py                   # Alloy CLI integration (.als builder + validator)
+│   ├── experiment.py              # Parallel trial runner with progress + checkpoints
+│   ├── analysis.py                # pass@k, CSV export, bar charts, heatmaps
+│   └── guide.py                   # Alloy language reference (for guided tasks)
+│
 ├── data/
 │   ├── graph_properties.jsonl     # 3 graph properties (DAG, Cycle, Circular)
-│   └── relation_properties.jsonl  # 8 relation properties (Connex, Reflexive, …)
-└── output/                    # Created at runtime (results, .als files, figures)
+│   ├── relation_properties.jsonl  # 8 relation properties (Connex, Reflexive, ...)
+│   └── extended/                  # 30 extended properties (4 domains)
+│
+├── report/
+│   ├── report.md                  # Full project report
+│   ├── generate_figures.py        # Regenerate all figures from results
+│   └── fig*.png                   # Report figures
+│
+└── output/                        # Created at runtime (gitignored)
 ```
 
-## Quick Start
+---
+
+## Setup
+
+### 1. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
-Create a `.env` file:
+### 2. Install the Alloy CLI
+
+```bash
+brew install alloy-analyzer   # macOS
+```
+
+Verify: `alloy --version`
+
+### 3. Configure API key
+
+Copy `.env.example` to `.env` and add your Vertex AI API key:
 
 ```
-OPENAI_API_KEY=sk-...
-DEEPSEEK_API_KEY=sk-...        # optional
+VERTEX_API_KEY=your-key-here
 ```
 
-Ensure the **Alloy CLI** is on your PATH (or set `ALLOY_PATH` in the notebook config cell).
+---
 
-Then open `replication.ipynb` and run all cells.
+## Running the Experiment
 
-## The 11 Properties
+### Quick test (1 solution, fastest model)
 
-| #   | Property      | Domain   | Signature                     |
-| --- | ------------- | -------- | ----------------------------- |
-| 1   | DAG           | graph    | `sig Node { link: set Node }` |
-| 2   | Cycle         | graph    | `sig Node { link: set Node }` |
-| 3   | Circular      | graph    | `sig Node { link: set Node }` |
-| 4   | Connex        | relation | `sig S { r: set S }`          |
-| 5   | Reflexive     | relation | `sig S { r: set S }`          |
-| 6   | Symmetric     | relation | `sig S { r: set S }`          |
-| 7   | Transitive    | relation | `sig S { r: set S }`          |
-| 8   | Antisymmetric | relation | `sig S { r: set S }`          |
-| 9   | Irreflexive   | relation | `sig S { r: set S }`          |
-| 10  | Functional    | relation | `sig S { r: set S }`          |
-| 11  | Function      | relation | `sig S { r: set S }`          |
+```bash
+uv run python run_experiment.py --fast
+```
 
-## Three Tasks
+### Full experiment
 
-1. **NL → Alloy** — translate natural language description to Alloy formula
-2. **Alloy → Alloy** — generate a logically equivalent alternative formula
-3. **Sketch → Alloy** — fill holes (`_`) in an incomplete formula
+```bash
+uv run python run_experiment.py --guide --agent --reflect --expand --solutions 3 --workers 32
+```
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--solutions N` | 20 | LLM samples per property per task |
+| `--workers N` | 32 | Parallel worker threads |
+| `--fast` | off | Use Flash Lite only, 1 solution |
+| `--guide` | off | Include guided variants (Alloy reference in system prompt) |
+| `--agent` | off | Include agent variants (Alloy compiler feedback, 1 retry) |
+| `--reflect` | off | Include reflect variants (self-critique, 1 retry) |
+| `--expand` | off | Include extended dataset (30 extra properties) |
+
+---
+
+## Task Variants
+
+| Variant | Description |
+|---|---|
+| **Base** | Direct replication: nl2alloy, alloy2alloy, sketch2alloy |
+| **Guided** | Same prompts + Alloy language reference injected into system prompt |
+| **Agent** | 1 attempt + 1 round of Alloy compiler error feedback |
+| **Reflect** | 1 attempt + 1 round of LLM self-critique (no compiler) |
+
+---
+
+## Models
+
+| Model | Type | Notes |
+|---|---|---|
+| Gemini 2.5 Flash Lite | Lightweight | Fast, cheap, lower accuracy |
+| Gemini 2.5 Pro | Reasoning | Near paper-level results |
+
+All calls go through Vertex AI REST API with structured JSON output.
+
+---
 
 ## Validation
 
-Uses the Alloy Analyzer's SAT solver to check `candidate iff canonical` within a bounded scope. UNSAT = formulas are equivalent = pass.
+For each generated formula, the runner builds an `.als` file and checks equivalence with the Alloy analyzer:
+
+```alloy
+check predName { predName iff (canonical_formula) } for 3
+```
+
+- **UNSAT** (no counterexample in scope 3) = **pass**
+- **SAT** (counterexample found) = **fail** (Counterexample)
+- Parse error = **fail** (Syntax Error / Type Error)
+
+---
+
+## Reference
+
+Hong, F., Jiang, M., Fu, C., & Khurshid, S. (2025).
+_On the Effectiveness of LLMs in Writing Alloy Formulas._
+arXiv:2502.15441.

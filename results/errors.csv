@@ -1,0 +1,21 @@
+task,error,count
+A2A,Counterexample,4
+A2A,Syntax Error,1
+A2A,Type Error,1
+A2A+A,Counterexample,2
+A2A+G,Counterexample,5
+A2A+G,Type Error,1
+A2A+R,Counterexample,1
+NL,Counterexample,11
+NL,Type Error,1
+NL+A,Counterexample,5
+NL+G,Counterexample,14
+NL+R,Counterexample,6
+NL+R,Type Error,1
+SKT,Syntax Error,4
+SKT+A,Syntax Error,3
+SKT+A,Counterexample,1
+SKT+G,Syntax Error,5
+SKT+G,Counterexample,1
+SKT+R,Syntax Error,5
+SKT+R,Counterexample,1
